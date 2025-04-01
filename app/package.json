@@ -1,0 +1,18 @@
+{
+    "name": "elastic-apm-demo-app",
+    "version": "1.0.0",
+    "description": "Aplikasi demo untuk monitoring dengan Elastic APM",
+    "main": "app.js",
+    "scripts": {
+      "start": "node app.js",
+      "dev": "nodemon app.js",
+      "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "dependencies": {
+      "elastic-apm-node": "^3.45.0",
+      "express": "^4.18.2"
+    },
+    "devDependencies": {
+      "nodemon": "^2.0.22"
+    }
+  }

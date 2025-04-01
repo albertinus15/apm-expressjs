@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  # Aplikasi Demo
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: demo-app
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - APM_SERVER_URL=http://apm-server:8200
+    ports:
+      - "3000:3000"
+    depends_on:
+      - apm-server
+    restart: unless-stopped
+    networks:
+      - elastic
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+    restart: unless-stopped
+
+  # Kibana
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.9.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - elastic
+    restart: unless-stopped
+
+  # APM Server
+  apm-server:
+    image: docker.elastic.co/apm/apm-server:8.9.0
+    container_name: apm-server
+    ports:
+      - "8200:8200"
+    command: >
+      apm-server -e
+        -E apm-server.rum.enabled=true
+        -E apm-server.rum.event_rate.limit=300
+        -E apm-server.rum.event_rate.lru_size=1000
+        -E apm-server.kibana.enabled=true
+        -E apm-server.kibana.host=kibana:5601
+        -E output.elasticsearch.hosts=["elasticsearch:9200"]
+    depends_on:
+      - elasticsearch
+      - kibana
+    networks:
+      - elastic
+    restart: unless-stopped
+
+  # Load Generator untuk simulasi traffic
+  loadgenerator:
+    image: alpine:latest
+    container_name: load-generator
+    depends_on:
+      - app
+    command: >
+      /bin/sh -c "
+        apk add --no-cache curl;
+        while true;
+        do
+          sleep $$(( RANDOM % 5 + 1 ));
+          curl -s app:3000/ > /dev/null;
+          sleep $$(( RANDOM % 5 + 1 ));
+          curl -s app:3000/slow > /dev/null;
+          sleep $$(( RANDOM % 10 + 1 ));
+          curl -s app:3000/api/products > /dev/null;
+          sleep $$(( RANDOM % 5 + 1 ));
+          curl -s app:3000/api/products/1 > /dev/null;
+          sleep $$(( RANDOM % 10 + 1 ));
+          curl -s app:3000/cpu-intensive > /dev/null;
+          sleep $$(( RANDOM % 15 + 5 ));
+          curl -s app:3000/memory-intensive > /dev/null;
+          sleep $$(( RANDOM % 20 + 10 ));
+          curl -s app:3000/api/external-service > /dev/null;
+          
+          # Occasionally trigger errors
+          if [ $$(( RANDOM % 20 )) -eq 0 ]; then
+            curl -s app:3000/error > /dev/null 2>&1;
+          fi;
+        done
+      "
+    networks:
+      - elastic
+    restart: unless-stopped
+
+volumes:
+  elasticsearch-data:
+
+networks:
+  elastic:
+    driver: bridge
